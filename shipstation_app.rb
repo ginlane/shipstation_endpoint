@@ -1,5 +1,42 @@
 class ShipStationApp < EndpointBase::Sinatra::Base
   set :public_folder, 'public'
+  set :endpoint_key, '8f7d782ebd8903eada454f653dc8d183c05298147917236f'
+
+  post '/get_orders' do
+    puts JSON.pretty_generate(@payload)
+    puts JSON.pretty_generate(@config)
+    # ap request.env
+    # puts @endpoint_key
+
+    begin
+      authenticate_shipstation
+
+      # Shipstation doesn't record time information - just date, so round the parameter down
+      since = Time.parse(@config[:since]).utc.beginning_of_day.iso8601
+
+      @client.Orders.filter("ModifyDate ge datetime'#{since}'")
+      shipstation_result = @client.execute
+
+      # TODO - get shipping carrier, etc.
+      shipstation_result.each do |resource|
+        add_value :order, {
+          id: resource.OrderNumber.to_s,
+          shipstation_id: resource.OrderID.to_i
+        }
+      end
+      @kount = shipstation_result.count
+
+      # return current timestamp so parameter updates on hub side
+      # NOTE: shipstation doesn't provide detail beyond date so we need to round it down in order
+      # to not miss any shipments
+      add_parameter 'since', Time.now.utc.beginning_of_day
+    rescue => e
+      # tell the hub about the unsuccessful get attempt
+      result 500, "Unable to get orders from ShipStation. Error: #{e.message}"
+    end
+
+    result 200, "Retrieved #{@kount} orders from ShipStation"
+  end
 
   post '/add_order' do
 
