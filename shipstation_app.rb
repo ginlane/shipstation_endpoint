@@ -4,24 +4,23 @@ class ShipStationApp < EndpointBase::Sinatra::Base
 
   post '/get_orders' do
     puts JSON.pretty_generate(@payload)
-    puts JSON.pretty_generate(@config)
-    # ap request.env
-    # puts @endpoint_key
 
     begin
       authenticate_shipstation
 
       # Shipstation doesn't record time information - just date, so round the parameter down
-      since = Time.parse(@config[:since]).utc.beginning_of_day.iso8601
+      since = Time.parse(@config[:since]).iso8601
 
-      @client.Orders.filter("ModifyDate ge datetime'#{since}'")
+      @client.Orders.filter("(ModifyDate ge datetime'#{since}') and (StoreID eq #{@config[:shipstation_store_id]})")
       shipstation_result = @client.execute
 
       # TODO - get shipping carrier, etc.
       shipstation_result.each do |resource|
-        add_value :order, {
+        add_object :order, {
           id: resource.OrderNumber.to_s,
-          shipstation_id: resource.OrderID.to_i
+          shipstation_id: resource.OrderID.to_i,
+          email: resource.BuyerEmail,
+          shipped_at: resource.ShipDate
         }
       end
       @kount = shipstation_result.count
@@ -36,6 +35,25 @@ class ShipStationApp < EndpointBase::Sinatra::Base
     end
 
     result 200, "Retrieved #{@kount} orders from ShipStation"
+  end
+
+  post '/get_stores' do
+    authenticate_shipstation
+
+    @client.Stores
+    shipstation_result = @client.execute
+
+    # TODO - get shipping carrier, etc.
+    shipstation_result.each do |resource|
+      add_object :store, {
+        id: resource.StoreID.to_s,
+        store_name: resource.StoreName.to_s,
+        email: resource.PublicEmail.to_s,
+        active: resource.Active.to_s
+      }
+    end
+    @kount = shipstation_result.count
+    result 200, "Retrieved #{@kount} Stores from ShipStation"
   end
 
   post '/add_order' do
