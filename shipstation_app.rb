@@ -1,6 +1,6 @@
 class ShipStationApp < EndpointBase::Sinatra::Base
   set :public_folder, 'public'
-  set :endpoint_key, '8f7d782ebd8903eada454f653dc8d183c05298147917236f'
+  set :endpoint_key, '4f066b67493b46009a8b2e0e4dda1b2a01ec67a01c53f4e8'
 
   post '/get_orders' do
     puts JSON.pretty_generate(@payload)
@@ -9,9 +9,16 @@ class ShipStationApp < EndpointBase::Sinatra::Base
       authenticate_shipstation
 
       # Shipstation doesn't record time information - just date, so round the parameter down
-      since = Time.parse(@config[:since]).iso8601
+      if @config[:since].present?
+        since = Time.parse(@config[:since]).iso8601
+      else
+        since = Time.now.beginning_of_day
+      end
 
-      @client.Orders.filter("(ModifyDate ge datetime'#{since}') and (StoreID eq #{@config[:shipstation_store_id]})")
+      filter = "(ModifyDate ge datetime'#{since}')"
+      filter += "and (StoreID eq #{@config[:shipstation_store_id]})" if @config[:shipstation_store_id].present?
+
+      @client.Orders.filter(filter)
       shipstation_result = @client.execute
 
       # TODO - get shipping carrier, etc.
